@@ -36,7 +36,14 @@ The three fixes I applied:
 1. **XSS** → Jinja templates with autoescaping (`render_template_string` + `{{ name }}`).
 2. **SQLi** → parameterized queries (`conn.execute("... WHERE id = ?", (uid,))`).
 3. **Headers** → added `Content-Security-Policy`, `X-Frame-Options`,
-   `X-Content-Type-Options` and `Referrer-Policy` (HSTS belongs at the TLS layer).
+   `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `COOP` and `CORP`,
+   and replaced the versioned `Server` banner (information disclosure).
+
+> [!note] Why the gate is B and not A
+> headguard scores **HSTS at 20 points**, and HSTS only makes sense over TLS.
+> On plain `http://localhost` the maximum possible grade is therefore **B (80%)** —
+> in production, behind a TLS-terminating proxy, the same code would gate at **A**.
+> The gate is `--min-grade B` with a comment in the workflow explaining exactly this.
 
 ## 4 · Verification — the pipeline goes green
 
@@ -44,7 +51,7 @@ The three fixes I applied:
 
 - Semgrep: 0 findings
 - ZAP: 0 high alerts
-- headguard: **F → A**
+- headguard: **F → B** (B = ceiling on plain HTTP; see note above)
 
 ## What this demonstrates
 

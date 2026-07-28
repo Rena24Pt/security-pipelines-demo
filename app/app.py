@@ -1,11 +1,17 @@
 """
-Deliberately vulnerable mini Flask app — OWASP Top 10 demo.
-Every vulnerability is marked with a VULN comment, its OWASP category,
-and how it should be fixed. This is teaching material — never write
-code like this in production.
+Fixed version of the demo app — the three OWASP findings remediated.
+Each fix is marked with a FIX comment referencing the original vulnerability.
+(The vulnerable version lives in git history — that red-to-green diff is the point.)
 """
 import sqlite3
-from flask import Flask, request
+from flask import Flask, request, render_template_string
+from werkzeug.serving import WSGIRequestHandler
+
+# FIX — information disclosure: don't advertise framework + versions.
+# (Werkzeug's dev server injects its own "Server: Werkzeug/x.y Python/x.y" header;
+# override it so only our neutral banner goes out.)
+WSGIRequestHandler.server_version = "secure-pipeline-demo"
+WSGIRequestHandler.sys_version = ""
 
 app = Flask(__name__)
 DB = "/tmp/demo.db"
@@ -27,33 +33,39 @@ def init_db():
 @app.route("/hello")
 def hello():
     name = request.args.get("name", "world")
-    # VULN — A03 Injection (Reflected XSS):
-    # user input is concatenated straight into the HTML, unescaped.
-    # Proof: /hello?name=<script>alert(1)</script>
-    # Fix: Jinja templates with autoescaping (render_template_string + {{ name }})
-    # or markupsafe.escape(name).
-    return f"<h1>Hello, {name}!</h1>"
+    # FIX — A03 Injection (Reflected XSS):
+    # Jinja autoescapes {{ name }}, so injected markup is rendered as inert text.
+    return render_template_string("<h1>Hello, {{ name }}!</h1>", name=name)
 
 
 @app.route("/user")
 def user():
     uid = request.args.get("id", "1")
     conn = sqlite3.connect(DB)
-    # VULN — A03 Injection (SQL Injection):
-    # the query is built by string concatenation with user input.
-    # Proof: /user?id=1 OR 1=1   (returns EVERY user)
-    # Fix: parameterized queries: conn.execute("... WHERE id = ?", (uid,))
-    rows = conn.execute("SELECT id, name, role FROM users WHERE id = " + uid).fetchall()
+    # FIX — A03 Injection (SQL Injection):
+    # parameterized query — user input is data, never SQL syntax.
+    try:
+        rows = conn.execute(
+            "SELECT id, name, role FROM users WHERE id = ?", (uid,)
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
     conn.close()
     return {"users": [{"id": r[0], "name": r[1], "role": r[2]} for r in rows]}
 
 
 @app.after_request
-def no_security_headers(resp):
-    # VULN — A05 Security Misconfiguration:
-    # the app sets no security headers at all (CSP, HSTS, X-Frame-Options...).
-    # Proof: headguard against http://127.0.0.1:5000 → grade F.
-    # Fix: set the headers (see the 'fixed' version).
+def security_headers(resp):
+    # FIX — A05 Security Misconfiguration: explicit security headers.
+    # (HSTS deliberately absent: it only makes sense over TLS, which terminates
+    # upstream — that's also why the CI gate targets grade B on plain HTTP.)
+    resp.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    resp.headers["Cross-Origin-Resource-Policy"] = "same-origin"
     return resp
 
 
