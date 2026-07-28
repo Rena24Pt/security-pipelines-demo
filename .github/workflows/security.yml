@@ -1,0 +1,51 @@
+name: Security (SAST + DAST)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sast:
+    name: SAST — Semgrep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Semgrep scan
+        run: |
+          pip install semgrep
+          semgrep scan --config auto --error --json --output semgrep-report.json app/ || true
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep-report.json
+
+  dast:
+    name: DAST — OWASP ZAP baseline
+    runs-on: ubuntu-latest
+    needs: sast
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Start the app
+        run: |
+          pip install -r app/requirements.txt
+          python app/app.py &
+          sleep 5
+          curl -sf http://127.0.0.1:5000/hello?name=healthcheck
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: "http://127.0.0.1:5000"
+          rules_file_name: .zap/rules.tsv
+          cmd_options: "-a"
