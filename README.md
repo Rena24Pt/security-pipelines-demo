@@ -1,16 +1,38 @@
 # Secure Pipeline Demo
 
-Demo de **DevSecOps num nutshell**: uma pequena app Flask com vulnerabilidades
-deliberadas (OWASP Top 10), uma pipeline GitHub Actions que as apanha com
-**SAST (Semgrep)** e **DAST (OWASP ZAP)**, e a remediação documentada commit a commit.
+I built this project to learn and demonstrate **DevSecOps in practice**: a small
+Flask app with intentional vulnerabilities (OWASP Top 10), and a CI pipeline that
+catches them automatically and blocks the merge until they're fixed.
 
-## Estrutura
+The short version: **vulnerable code → pipeline catches it (red build) → I fix it
+→ pipeline goes green.** The full story, with screenshots, is in [SECURITY.md](SECURITY.md).
 
-- `app/` — a aplicação vulnerável (comentada em cada falha)
-- `.github/workflows/security.yml` — a pipeline SAST + DAST
-- `SECURITY.md` — a história: vulnerável → detetado → remediado → verificado
+## What's inside
 
-## Correr localmente
+- `app/` — a small Flask app with three intentional vulnerabilities, each one
+  commented in the code with the OWASP category it maps to and how to fix it:
+  - **Reflected XSS** (A03 Injection) at `/hello?name=`
+  - **SQL Injection** (A03 Injection) at `/user?id=`
+  - **Missing security headers** (A05 Security Misconfiguration) on every response
+- `.github/workflows/security.yml` — the CI pipeline
+- `SECURITY.md` — the full narrative (vulnerable → detected → remediated → verified)
+
+## The pipeline
+
+On every Pull Request, GitHub Actions runs three gates:
+
+1. **SAST — Semgrep.** Static analysis of the code: finds the SQL injection and the
+   XSS at the source, before anything even runs.
+2. **DAST — OWASP ZAP baseline.** Boots the app in a container and attacks it like
+   a real user would: finds the missing headers and the reflected XSS at runtime.
+3. **Headers gate — [headguard](https://github.com/Rena24Pt/headguard).** My own
+   open-source tool, requiring grade **A** on the security headers. (Yes, the
+   vulnerable app scores an F — that's the point.)
+
+If any gate fails, the build goes red and the merge is blocked. That's the whole
+idea: **security as a merge requirement, not a manual afterthought.**
+
+## Run it locally
 
 ```bash
 cd app
@@ -19,26 +41,19 @@ pip install -r requirements.txt
 python app.py          # http://127.0.0.1:5000
 ```
 
-Testes rápidos das vulnerabilidades (com a app a correr):
+Try the vulnerabilities yourself:
 
 ```bash
-# Reflected XSS (A03)
+# Reflected XSS
 curl 'http://127.0.0.1:5000/hello?name=<script>alert(1)</script>'
 
-# SQL Injection (A03) — devolve todos os utilizadores
+# SQL Injection — returns every user in the table
 curl 'http://127.0.0.1:5000/user?id=1%20OR%201=1'
-
-# Security headers em falta (A05) — com o headguard do autor deste repo:
-# headguard http://127.0.0.1:5000 --insecure
 ```
 
-## A pipeline
+## Why I built this
 
-A cada Pull Request, a GitHub Actions:
-
-1. **SAST** — Semgrep analisa o código (apanha a SQLi e o XSS na fonte)
-2. **DAST** — sobe a app num container e corre o OWASP ZAP baseline contra ela
-   (apanha os headers em falta e o XSS a correr)
-3. Falha o build se houver findings **High** — e publica os relatórios como artifacts.
-
-Ver `SECURITY.md` para a narrativa completa (com prints).
+Job descriptions in AppSec ask for "SAST, DAST, pipelines". I didn't want to just
+list those words on my CV — I wanted to show them working. Everything here is
+deliberately small so the security story stays readable: one app, three bugs,
+three gates, one fix.

@@ -49,3 +49,7 @@ jobs:
           target: "http://127.0.0.1:5000"
           rules_file_name: .zap/rules.tsv
           cmd_options: "-a"
+      - name: Security headers gate (headguard)
+        run: |
+          pip install git+https://github.com/Rena24Pt/headguard
+          headguard http://127.0.0.1:5000 --min-grade A

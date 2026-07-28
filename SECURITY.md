@@ -1,39 +1,55 @@
-# A história do projeto (vulnerável → detetado → remediado → verificado)
+# The story: vulnerable → detected → remediated → verified
 
-> Este ficheiro documenta a narrativa DevSecOps do repo — preencher com prints
-> e links para os runs da Actions à medida que acontecem.
+This file documents the journey of this repo — the part that actually matters.
+(I'll fill in the screenshots and Action run links as they happen.)
 
-## 1 · Estado vulnerável (main inicial)
+## 1 · The vulnerable app (initial main)
 
-A app (`app/app.py`) tem três vulnerabilidades deliberadas, mapeadas ao OWASP Top 10:
+`app/app.py` ships with three intentional vulnerabilities, each mapped to the
+OWASP Top 10:
 
-| # | Vulnerabilidade | OWASP | Onde | Como explorar |
+| # | Vulnerability | OWASP | Where | How to trigger it |
 |---|---|---|---|---|
 | 1 | Reflected XSS | A03 Injection | `/hello?name=` | `<script>alert(1)</script>` |
 | 2 | SQL Injection | A03 Injection | `/user?id=` | `1 OR 1=1` |
-| 3 | Security headers ausentes | A05 Security Misconfiguration | todas as respostas | `headguard` → grade F |
+| 3 | Missing security headers | A05 Security Misconfiguration | every response | headguard scores **F** |
 
-## 2 · Deteção (pipeline a vermelho)
+Each one is commented in the code with what makes it dangerous and what the fix is.
 
-- **SAST (Semgrep):** *(print do run + findings: concatenação SQL, HTML sem escape)*
-- **DAST (ZAP baseline):** *(print do run + alerts: XSS reflected, headers em falta)*
+## 2 · Detection — the pipeline goes red
 
-## 3 · Remediação (commit X)
+*(screenshots of the failed run)*
 
-As correções aplicadas:
+- **SAST (Semgrep)** flagged the string-concatenated SQL query and the unescaped
+  HTML output — before the app ever ran.
+- **DAST (ZAP baseline)** flagged the reflected XSS and the missing headers at runtime.
+- **headguard** graded the headers **F** and blocked the merge.
 
-1. **XSS:** templates Jinja com autoescape (`render_template_string` + `{{ name }}`).
-2. **SQLi:** queries parametrizadas (`conn.execute("... WHERE id = ?", (uid,))`).
-3. **Headers:** `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`,
-   `Referrer-Policy` — e HSTS quando atrás de TLS.
+What I found interesting here: the two tools catch **different** things. SAST sees
+the dangerous code patterns; DAST sees the actual behavior. Neither alone is enough —
+that's exactly why AppSec pipelines run both.
 
-## 4 · Verificação (pipeline a verde)
+## 3 · Remediation (commit: `fix: remediate OWASP findings`)
 
-- *(print do run verde: 0 findings high)*
-- headguard: grade F → grade A *(print)*
+The three fixes I applied:
 
-## O que isto demonstra
+1. **XSS** → Jinja templates with autoescaping (`render_template_string` + `{{ name }}`).
+2. **SQLi** → parameterized queries (`conn.execute("... WHERE id = ?", (uid,))`).
+3. **Headers** → added `Content-Security-Policy`, `X-Frame-Options`,
+   `X-Content-Type-Options` and `Referrer-Policy` (HSTS belongs at the TLS layer).
 
-- SAST apanha vulnerabilidades **no código** (antes de correr).
-- DAST apanha vulnerabilidades **a correr** (o que o SAST não vê: headers, comportamento).
-- O quality gate **falha o merge** enquanto houver findings High — segurança como requisito do pipeline, não como passo manual posterior.
+## 4 · Verification — the pipeline goes green
+
+*(screenshot of the passing run)*
+
+- Semgrep: 0 findings
+- ZAP: 0 high alerts
+- headguard: **F → A**
+
+## What this demonstrates
+
+- **SAST catches bugs in code** before they ever run.
+- **DAST catches bugs in behavior** that static analysis can't see (headers, runtime config).
+- **The merge gate makes security a requirement** — vulnerable code literally cannot land.
+- Remediation isn't "fixed and forgotten": the same pipeline that caught the bugs
+  is the one that verifies the fix.

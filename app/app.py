@@ -1,7 +1,8 @@
 """
-Mini app Flask deliberadamente vulnerável — demo OWASP Top 10.
-Cada vulnerabilidade está marcada com um comentário VULN e a categoria OWASP.
-NUNCA usar este padrão em código real — é material didático.
+Deliberately vulnerable mini Flask app — OWASP Top 10 demo.
+Every vulnerability is marked with a VULN comment, its OWASP category,
+and how it should be fixed. This is teaching material — never write
+code like this in production.
 """
 import sqlite3
 from flask import Flask, request
@@ -11,7 +12,7 @@ DB = "/tmp/demo.db"
 
 
 def init_db():
-    """Cria uma BD sqlite mínima com dados de teste."""
+    """Create a minimal sqlite DB with test data."""
     conn = sqlite3.connect(DB)
     conn.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER, name TEXT, role TEXT)")
     conn.execute("DELETE FROM users")
@@ -25,13 +26,13 @@ def init_db():
 
 @app.route("/hello")
 def hello():
-    name = request.args.get("name", "mundo")
+    name = request.args.get("name", "world")
     # VULN — A03 Injection (Reflected XSS):
-    # o input do utilizador é concatenado diretamente no HTML sem escape.
-    # Prova: /hello?name=<script>alert(1)</script>
-    # Correção: usar templates Jinja com autoescape (render_template_string
-    # com {{ name }}) ou markupsafe.escape(name).
-    return f"<h1>Olá, {name}!</h1>"
+    # user input is concatenated straight into the HTML, unescaped.
+    # Proof: /hello?name=<script>alert(1)</script>
+    # Fix: Jinja templates with autoescaping (render_template_string + {{ name }})
+    # or markupsafe.escape(name).
+    return f"<h1>Hello, {name}!</h1>"
 
 
 @app.route("/user")
@@ -39,9 +40,9 @@ def user():
     uid = request.args.get("id", "1")
     conn = sqlite3.connect(DB)
     # VULN — A03 Injection (SQL Injection):
-    # a query é construída por concatenação de strings com input do utilizador.
-    # Prova: /user?id=1 OR 1=1   (devolve TODOS os utilizadores)
-    # Correção: queries parametrizadas: conn.execute("... WHERE id = ?", (uid,))
+    # the query is built by string concatenation with user input.
+    # Proof: /user?id=1 OR 1=1   (returns EVERY user)
+    # Fix: parameterized queries: conn.execute("... WHERE id = ?", (uid,))
     rows = conn.execute("SELECT id, name, role FROM users WHERE id = " + uid).fetchall()
     conn.close()
     return {"users": [{"id": r[0], "name": r[1], "role": r[2]} for r in rows]}
@@ -50,9 +51,9 @@ def user():
 @app.after_request
 def no_security_headers(resp):
     # VULN — A05 Security Misconfiguration:
-    # a app não define nenhum security header (CSP, HSTS, X-Frame-Options...).
-    # Prova: corre o headguard contra http://127.0.0.1:5000 → grade F.
-    # Correção: adicionar headers (ver branch 'fixed').
+    # the app sets no security headers at all (CSP, HSTS, X-Frame-Options...).
+    # Proof: headguard against http://127.0.0.1:5000 → grade F.
+    # Fix: set the headers (see the 'fixed' version).
     return resp
 
 
